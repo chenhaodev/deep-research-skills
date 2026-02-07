@@ -35,7 +35,7 @@ class Paper(BaseModel):
     
     @property
     def abstract_word_count(self) -> int:
-        if not self.has_abstract:
+        if not self.has_abstract or self.abstract is None:
             return 0
         return len(self.abstract.split())
 

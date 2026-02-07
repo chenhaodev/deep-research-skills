@@ -59,22 +59,28 @@ class PubMedClient:
         
         for article in root.findall(".//PubmedArticle"):
             try:
-                pmid = article.find(".//PMID").text if article.find(".//PMID") is not None else ""
+                pmid_elem = article.find(".//PMID")
+                pmid = pmid_elem.text if pmid_elem is not None and pmid_elem.text else ""
+                
                 title_elem = article.find(".//ArticleTitle")
-                title = title_elem.text if title_elem is not None else ""
+                title = title_elem.text if title_elem is not None and title_elem.text else ""
                 
                 abstract_elem = article.find(".//AbstractText")
                 abstract = abstract_elem.text if abstract_elem is not None else None
                 
                 year_elem = article.find(".//PubDate/Year")
-                year = int(year_elem.text) if year_elem is not None else None
+                year = int(year_elem.text) if year_elem is not None and year_elem.text else None
                 
                 authors = []
                 for author in article.findall(".//Author"):
                     lastname = author.find("LastName")
                     forename = author.find("ForeName")
-                    if lastname is not None:
-                        name = f"{forename.text} {lastname.text}" if forename is not None else lastname.text
+                    if lastname is not None and lastname.text:
+                        name_parts = []
+                        if forename is not None and forename.text:
+                            name_parts.append(forename.text)
+                        name_parts.append(lastname.text)
+                        name = " ".join(name_parts)
                         authors.append(Author(name=name))
                 
                 papers.append(Paper(
