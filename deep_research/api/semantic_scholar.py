@@ -1,7 +1,10 @@
 import httpx
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from deep_research.api.models import Paper, SearchResult, Author, ExternalIds
 from deep_research.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from deep_research.storage.cache import CacheManager
 
 logger = get_logger(__name__)
 
@@ -9,8 +12,9 @@ logger = get_logger(__name__)
 class SemanticScholarClient:
     BASE_URL = "https://api.semanticscholar.org/graph/v1"
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, cache: Optional["CacheManager"] = None):
         self.api_key = api_key
+        self.cache = cache
         self.client = httpx.AsyncClient(timeout=30)
     
     def _get_headers(self):
@@ -72,9 +76,21 @@ class SemanticScholarClient:
         data = response.json()
         
         papers = [self._parse_paper(p) for p in data.get("data", [])]
+        
+        if self.cache:
+            for paper in papers:
+                self.cache.set(paper.paper_id, paper, "semantic_scholar")
+            logger.debug(f"Cached {len(papers)} papers from search")
+        
         return SearchResult(papers=papers, total=data.get("total", 0), offset=offset)
     
     async def get_paper(self, paper_id: str, fields: Optional[str] = None) -> Paper:
+        if self.cache:
+            cached = self.cache.get(paper_id)
+            if cached and not self.cache.is_expired(paper_id, 30):
+                logger.debug(f"Cache hit for paper {paper_id}")
+                return cached
+        
         if fields is None:
             fields = "paperId,title,abstract,year,authors,venue,citationCount,externalIds,url"
         
@@ -87,7 +103,13 @@ class SemanticScholarClient:
             raise Exception(f"Paper not found (404)")
         
         response.raise_for_status()
-        return self._parse_paper(response.json())
+        paper = self._parse_paper(response.json())
+        
+        if self.cache:
+            self.cache.set(paper_id, paper, "semantic_scholar")
+            logger.debug(f"Cached paper {paper_id}")
+        
+        return paper
     
     async def get_citations(self, paper_id: str, limit: int = 100) -> List[Paper]:
         url = f"{self.BASE_URL}/paper/{paper_id}/citations"
